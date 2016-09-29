@@ -1,5 +1,5 @@
 /.cabal-sandbox/
-/dist*
+/backend/dist*
 /bench/*.html
 cabal.sandbox.config
 *.o
