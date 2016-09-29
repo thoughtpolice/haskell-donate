@@ -1,7 +1,7 @@
 FROM ubuntu:16.04
 MAINTAINER Austin Seipp "aseipp@pobox.com"
 
-COPY *.txt *.cabal *.hs *.project /app/
+COPY *.cabal *.hs *.project /app/
 WORKDIR /app/
 
 RUN apt-get -y update && \
