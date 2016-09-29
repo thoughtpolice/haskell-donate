@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Haskell.org Donation Page">
+    <meta name="author" content="Haskell.org">
+
+    <link rel="shortcut icon" href="/favicon.ico">
+    <link rel="stylesheet" type="text/css" href="theme.css">
+
+    <title>Donate with Stripe</title>
+
+    <script src="https://checkout.stripe.com/checkout.js"></script>
+    <script src="https://js.stripe.com/v2/"></script>
+  </head>
+
+  <body>
+    <h1>Donate with Stripe</h1>
+
+    <p>Use the below form to complete your donation &mdash; on mobile
+    or desktop, in whatever browser you choose &mdash; it should only
+    take a moment! (And if you're using iOS/macOS, you can also
+    use <a href="https://www.apple.com/apple-pay/">Apple Pay</a>
+    directly to make donation even faster!)</p>
+
+    <!-- noscript warning -->
+    <noscript>
+      <p style="color: red;"><strong>Oops! You'll need JavaScript
+      enabled to donate with Stripe!</strong></p>
+    </noscript>
+
+    <div class="middled">
+      <p><form>
+	  <input id="monies" type="number" pattern="\d*" min="0.5" step="any"
+		 placeholder="Amount in USD (e.g. 25.32)">
+      </form></p>
+
+      <div id="apple-pay-div" class="apple-pay-div">
+	<button id="apple-pay-button"></button><br/>
+      </div>
+      <a id="stripe-pay-button" class="stripe-btn" href="#">Donate with Stripe</a>
+    </div>
+
+    <br><hr>
+    <p><a href="/">Go to the main page</a>.</p>
+
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="https://donate-svc.cowsay.pw/pubkey.js"></script>
+    <script src="/donate.js"></script>
+  </body>
+</html>
