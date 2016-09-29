@@ -37,6 +37,7 @@ executable donate
 
     http-media     == 0.6.*,
     stripe-haskell == 2.1.*,
+    stripe-core    == 2.1.*,
     servant-server == 0.9.*,
     wai            == 3.2.*,
     warp           == 3.2.*

@@ -28,30 +28,26 @@
 module Main
   ( main -- :: IO ()
   ) where
-import           Data.List                  ( isPrefixOf )
-import           Data.List.Split            ( splitOn )
-import           Data.Maybe                 ( fromMaybe )
+import           Data.List                     ( isPrefixOf )
+import           Data.List.Split               ( splitOn )
+import           Data.Maybe                    ( fromMaybe )
+import           System.Exit                   ( die )
+import           System.Environment            ( lookupEnv )
 
-import           System.Exit                ( die )
-import           System.Environment         ( lookupEnv )
+import qualified Data.Text               as T  ( pack )
+import qualified Data.Text.Encoding      as T  ( encodeUtf8 )
+import qualified Data.Text.Lazy          as TL ( pack )
+import qualified Data.Text.Lazy.Encoding as TL ( encodeUtf8 )
 
-import qualified Data.Text.Lazy                             as L
-import qualified Data.Text.Lazy.Encoding                    as L
-
-import           Network.HTTP.Media         ( (//), (/:) )
-import           Network.Wai.Handler.Warp   ( run )
+import           Network.HTTP.Media            ( (//), (/:) )
+import           Network.Wai.Handler.Warp      ( run )
 import           Servant
 
---------------------------------------------------------------------------------
--- Javascript Mime type
-
-data Javascript
-
-instance Accept Javascript where
-  contentType _ = "text" // "javascript" /: ("charset", "utf-8")
-
-instance MimeRender Javascript String where
-  mimeRender _ = L.encodeUtf8 . L.pack
+import           Web.Stripe                    ()
+import           Web.Stripe.Client             ( StripeConfig(..)
+                                               , StripeKey(..) )
+import           Web.Stripe.Charge             ()
+import           Web.Stripe.Token              ()
 
 --------------------------------------------------------------------------------
 -- Health check interface
@@ -68,6 +64,20 @@ health = return NoContent
 
 --------------------------------------------------------------------------------
 -- Stripe public key interface
+
+-- | Javascript content type.
+data Javascript
+
+-- | Uses @application/javascript; charset=utf-8@.
+instance Accept Javascript where
+  contentType _ = "application" // "javascript" /: ("charset", "utf-8")
+
+instance MimeRender Javascript String where
+  mimeRender _ = TL.encodeUtf8 . TL.pack
+
+--
+-- Servant API
+--
 
 -- | Public key endpoint API. This API endpoint allows you to fetch a
 -- javascript file containing a stripe public key, which you can use
@@ -91,6 +101,21 @@ pubkey :: Maybe String
 pubkey var key = pure (unwords [ "var", v, "=", quoted, ";" ]) where
   quoted = "\"" ++ key ++ "\""
   v      = fromMaybe "stripe_pubkey" var
+
+--------------------------------------------------------------------------------
+-- Stripe charge API
+
+-- | Charge endpoint API. Used to charge some bank account or
+-- credit/debit card a fixed amount of money via Stripe.
+type ChargeAPI = "charge" :> Post '[PlainText] NoContent
+
+-- | Charge endpoint API implementation.
+charge :: String
+       -- ^ Stripe secret key.
+       -> Server ChargeAPI
+charge sk = return NoContent
+  where
+    _config = StripeConfig (StripeKey $ T.encodeUtf8 (T.pack sk))
 
 --------------------------------------------------------------------------------
 -- Miscellaneous utilities
@@ -124,18 +149,14 @@ getKeys = lookupEnv "STRIPE_KEYS" >>= \case
 -- | The full set of Servant API endpoints, combined into one full endpoint.
 type FullAPI = HealthAPI
           :<|> PubkeyAPI
+          :<|> ChargeAPI
 
 -- | Entry point, which does basic startup jobs and then sits in a
 -- loop, running the Warp server.
 main :: IO ()
-main = do
-  (p, _s) <- getKeys
-  runServer p
-
--- | Run the Warp server containing our Servant application.
-runServer :: String -> IO ()
-runServer pk = run 8080 app where
-  -- WAI application
-  app = serve (Proxy :: Proxy FullAPI)
-      $ health
-   :<|> pubkey Nothing pk
+main = getKeys >>= uncurry runServer where
+  runServer pk sk = run 8080 app where
+    app = serve (Proxy :: Proxy FullAPI)
+        $ health
+     :<|> pubkey Nothing pk
+     :<|> charge sk
