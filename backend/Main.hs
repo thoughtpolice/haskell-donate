@@ -64,7 +64,9 @@ type HealthAPI = "health" :> GetNoContent '[PlainText] NoContent
 -- based on the health of the application. A 200 response indicates
 -- the application is healthy.
 health :: Server HealthAPI
-health = return NoContent
+health = do
+  liftIO (putStrLn "INFO: health check ping received")
+  return NoContent
 
 --------------------------------------------------------------------------------
 -- Stripe public key interface
