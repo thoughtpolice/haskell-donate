@@ -58,7 +58,7 @@ import           Web.Stripe.Charge
 
 -- | Health check endpoint API. This is queried by some monitor or
 -- manager to ensure the service is still responding properly.
-type HealthAPI = "health" :> Get '[PlainText] NoContent
+type HealthAPI = "health" :> GetNoContent '[PlainText] NoContent
 
 -- | Health check endpoint API implementation. When queried, responds
 -- based on the health of the application. A 200 response indicates
