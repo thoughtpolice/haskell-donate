@@ -1,10 +1,13 @@
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE DeriveGeneric              #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE DeriveAnyClass             #-}
+{-# LANGUAGE RecordWildCards            #-}
 {-# LANGUAGE FlexibleInstances          #-}
-{-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE MultiParamTypeClasses      #-}
 
 -- |
 -- Module      : Main
@@ -28,13 +31,17 @@
 module Main
   ( main -- :: IO ()
   ) where
+import           GHC.Generics                  ( Generic(..) )
+
+import           Control.Monad.Trans           ( liftIO )
 import           Data.List                     ( isPrefixOf )
 import           Data.List.Split               ( splitOn )
 import           Data.Maybe                    ( fromMaybe )
 import           System.Exit                   ( die )
 import           System.Environment            ( lookupEnv )
 
-import qualified Data.Text               as T  ( pack )
+import           Data.Aeson
+import qualified Data.Text               as T  ( Text, pack )
 import qualified Data.Text.Encoding      as T  ( encodeUtf8 )
 import qualified Data.Text.Lazy          as TL ( pack )
 import qualified Data.Text.Lazy.Encoding as TL ( encodeUtf8 )
@@ -43,11 +50,8 @@ import           Network.HTTP.Media            ( (//), (/:) )
 import           Network.Wai.Handler.Warp      ( run )
 import           Servant
 
-import           Web.Stripe                    ()
-import           Web.Stripe.Client             ( StripeConfig(..)
-                                               , StripeKey(..) )
-import           Web.Stripe.Charge             ()
-import           Web.Stripe.Token              ()
+import           Web.Stripe
+import           Web.Stripe.Charge
 
 --------------------------------------------------------------------------------
 -- Health check interface
@@ -105,17 +109,37 @@ pubkey var key = pure (unwords [ "var", v, "=", quoted, ";" ]) where
 --------------------------------------------------------------------------------
 -- Stripe charge API
 
+data Donation = Donation
+  { donationToken  :: T.Text
+  , donationAmount :: Int
+  , donationEmail  :: T.Text
+  } deriving (Generic, FromJSON)
+
 -- | Charge endpoint API. Used to charge some bank account or
 -- credit/debit card a fixed amount of money via Stripe.
-type ChargeAPI = "charge" :> Post '[PlainText] NoContent
+type ChargeAPI = "charge"
+              :> ReqBody '[JSON] Donation
+              :> Post '[PlainText] NoContent
 
 -- | Charge endpoint API implementation.
 charge :: String
        -- ^ Stripe secret key.
-       -> Server ChargeAPI
-charge sk = return NoContent
+       -> Donation
+       -- ^ Donation object.
+       -> Handler NoContent
+charge sk Donation{..} = do
+  let act = createCharge (Amount donationAmount) USD
+        -&- TokenId donationToken
+        -&- ReceiptEmail donationEmail
+
+  liftIO (stripe stripeConf act) >>= \case
+    Left e  -> bad e  >> return NoContent
+    Right x -> good x >> return NoContent
   where
-    _config = StripeConfig (StripeKey $ T.encodeUtf8 (T.pack sk))
+    stripeConf = StripeConfig (StripeKey $ T.encodeUtf8 (T.pack sk))
+
+    bad e  = liftIO (putStrLn $ "ERROR: when charging -- " ++ show e)
+    good _ = liftIO (putStrLn $ "OK: successfully donated")
 
 --------------------------------------------------------------------------------
 -- Miscellaneous utilities
@@ -158,5 +182,5 @@ main = getKeys >>= uncurry runServer where
   runServer pk sk = run 8080 app where
     app = serve (Proxy :: Proxy FullAPI)
         $ health
-     :<|> pubkey Nothing pk
-     :<|> charge sk
+     :<|> (pubkey Nothing pk)
+     :<|> (charge sk)
