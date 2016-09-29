@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Foobar.org Donation Page">
+    <meta name="author" content="Someone">
+    <!--<link rel="icon" href="/favicon.ico">-->
+
+    <title>Donation test</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.1/css/bootstrap.min.css" rel="stylesheet">
+
+    <!-- HTML5 shim and Respond.js for IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+      <script src="https://oss.maxcdn.com/html5shiv/3.7.2/html5shiv.min.js"></script>
+      <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
+    <![endif]-->
+  </head>
+
+  <body>
+    <div class="container">
+      <div class="starter-template">
+        <h1>Donate to foobar.org</h1>
+        <!-- noscript warning -->
+        <noscript>
+          <div class="alert alert-block">
+            You'll need JavaScript enabled to donate with Stripe.
+          </div>
+        </noscript>
+
+        <!-- Input form and button -->
+        <p><form class="form-inline">
+            $ <input id="monies" type="number" pattern="\d*" min="0.5" step="any"
+                     class="input-large" placeholder="Amount in USD (e.g. 25.32)">
+            <button id="paybtn" class="btn btn-info" type="button">Donate</button>
+          </form></p>
+
+        <!-- Donation status window -->
+        <div id="payment_status" class="alert alert-block fade">
+          <button id="pay_status_close_btn" href="#"
+                  type="button" class="close">&times;</button>
+          <span id="status_message">Enter an amount above.</span>
+        </div>
+      </div>
+
+    </div><!-- /.container -->
+
+    <!-- Bootstrap core JavaScript
+    ================================================== -->
+    <!-- Placed at the end of the document so the pages load faster -->
+    <script src="//code.jquery.com/jquery-1.11.2.min.js"></script>
+    <script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.1/js/bootstrap.min.js"></script>
+    <script src="https://checkout.stripe.com/checkout.js"></script>
+    <script src="https://MYAPPLICATION.herokuapp.com/pubkey.js"></script>
+    <script src="/donate.js"></script>
+    <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
+    <!--<script src="../../assets/js/ie10-viewport-bug-workaround.js"></script>-->
+  </body>
+</html>
