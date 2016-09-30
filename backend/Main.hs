@@ -37,6 +37,8 @@ import           Control.Monad.Trans           ( liftIO )
 import           Data.List                     ( isPrefixOf )
 import           Data.List.Split               ( splitOn )
 import           Data.Maybe                    ( fromMaybe )
+import           System.IO                     ( hSetBuffering, BufferMode(..)
+                                               , stdout, stderr )
 import           System.Exit                   ( die )
 import           System.Environment            ( lookupEnv )
 
@@ -268,9 +270,15 @@ type FullAPI = HealthAPI
 -- loop, running the Warp server.
 main :: IO ()
 main = (,) <$> getCorsDomain <*> getKeys >>= runServer where
-  runServer (corsDom,(pk,sk)) = run 8080 app where
-    app = serve (Proxy :: Proxy FullAPI)
-        $ health
-     :<|> (pubkey corsDom Nothing pk)
-     :<|> (charge corsDom sk)
-     :<|> (chargeOpts corsDom)
+  runServer (corsDom,(pk,sk)) = do
+    -- turn off buffering for stdout/error, so that tools (like docker) which
+    -- read from stdout will have read(2) return immediately.
+    hSetBuffering stdout NoBuffering
+    hSetBuffering stderr NoBuffering
+    -- run the app
+    run 8080 app where
+      app = serve (Proxy :: Proxy FullAPI)
+          $ health
+       :<|> (pubkey corsDom Nothing pk)
+       :<|> (charge corsDom sk)
+       :<|> (chargeOpts corsDom)
