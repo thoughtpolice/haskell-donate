@@ -29,7 +29,7 @@ function ajaxPost(url, params, goodk, badk) {
   xhr.onreadystatechange = function() {
     if (xhr.readyState == XMLHttpRequest.DONE && xhr.status == 200) {
       goodk();
-    } else {
+    } else if (xhr.readyState == XMLHttpRequest.DONE) {
       badk(xhr.responseText);
     }
   }
