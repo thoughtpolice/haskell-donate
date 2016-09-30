@@ -33,12 +33,14 @@ module Main
   ) where
 import           GHC.Generics                  ( Generic(..) )
 
-import           Control.Monad.Trans           ( liftIO )
+import           Control.Monad.Trans           ( MonadIO(..) )
 import           Data.List                     ( isPrefixOf )
 import           Data.List.Split               ( splitOn )
 import           Data.Maybe                    ( fromMaybe )
+import           Data.Time                     ( getCurrentTime )
 import           System.IO                     ( hSetBuffering, BufferMode(..)
-                                               , stdout, stderr )
+                                               , stdout, stderr
+                                               , hPutStrLn )
 import           System.Exit                   ( die )
 import           System.Environment            ( lookupEnv )
 
@@ -54,6 +56,7 @@ import           Servant
 
 import           Web.Stripe
 import           Web.Stripe.Charge
+import           Web.Stripe.Customer
 
 --------------------------------------------------------------------------------
 -- Types and utilities
@@ -101,6 +104,17 @@ corsOptHeaders origin method headers age
   . addHeader headers
   . addHeader age
 
+-- | A logging message; sent to either @'stdout'@ or @'stderr'@.
+data LogMsg = Stdout String | Stderr String
+
+-- | Log a message to stdout, along with the current time.
+logM :: MonadIO m => LogMsg -> m ()
+logM msg = liftIO $ do
+  t <- getCurrentTime
+  case msg of
+    Stdout m -> hPutStrLn stdout $ "[" ++ show t ++ "] " ++ m
+    Stderr m -> hPutStrLn stderr $ "[" ++ show t ++ "] " ++ m
+
 --------------------------------------------------------------------------------
 -- Health check interface
 
@@ -112,9 +126,7 @@ type HealthAPI = "health" :> GetNoContent '[PlainText] NoContent
 -- the health of the application. A 200 response indicates the application is
 -- healthy.
 health :: Server HealthAPI
-health = do
-  liftIO (putStrLn "INFO: health check ping received")
-  return NoContent
+health = logM (Stdout "INFO: health check ping received") >> return NoContent
 
 --------------------------------------------------------------------------------
 -- Stripe public key interface
@@ -190,19 +202,48 @@ charge :: CorsDomain
        -- ^ Donation object.
        -> Handler (CorsHeader NoContent)
 charge corsDom sk Donation{..} = do
-  let result = addCors corsDom "POST" NoContent
-      act = createCharge (Amount donationAmount) USD
-        -&- TokenId donationToken
-        -&- ReceiptEmail donationEmail
+  currentTime <- liftIO getCurrentTime
 
-  liftIO (stripe stripeConf act) >>= \case
-    Left e  -> bad e  >> return result
-    Right x -> good x >> return result
+  let desc = "Donated " ++ show (conv donationAmount) ++ " USD"
+      md   = [ ("amount", T.pack $ show donationAmount)
+             , ("date",   T.pack $ show currentTime) ]
+
+      act1 =
+        createCustomer
+          -&- Email donationEmail
+          -&- TokenId donationToken
+          -&- Description (T.pack desc)
+          -&- MetaData md
+
+      act2 cust =
+        createCharge (Amount donationAmount) USD
+          -&- ReceiptEmail donationEmail
+          -&- (customerId cust)
+
+  -- Do the business
+  liftIO (stripe stripeConf act1) >>= \case
+    Left e  -> bad e
+    Right x -> liftIO (stripe stripeConf (act2 x)) >>= \case
+      Left e  -> bad e
+      Right v -> good v
+
+  -- Done
+  return $ addCors corsDom "POST" NoContent
   where
     stripeConf = StripeConfig (StripeKey $ T.encodeUtf8 (T.pack sk))
 
-    bad e  = liftIO (putStrLn $ "ERROR: when charging -- " ++ show e)
-    good _ = liftIO (putStrLn $ "OK: successfully donated")
+    -- utility to convert stripe amount to a decimal
+    conv x = (fromIntegral x / 100) :: Double
+
+    -- handlers for failure and success
+    bad e = logM (Stderr $ "ERR: when charging -- " ++ show e)
+
+    good Charge{..} = logM (Stdout msg) where
+      ChargeId cid = chargeId
+      msg = "OK: Submitted a donation of "
+         ++ unwords [ show (conv chargeAmount), show chargeCurrency ]
+         ++ " (with a charge ID of " ++ show cid ++ "); receipt sent to "
+         ++ show (fromMaybe "(none)" chargeReceiptEmail)
 
 -- | Charge options endpoint API. When the browser is instructed to make some
 -- @'POST'@ request to the @\/charge@ endpoint, it first does a /preflight/
