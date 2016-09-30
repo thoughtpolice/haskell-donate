@@ -39,10 +39,12 @@ import           Data.List.Split               ( splitOn )
 import           Data.Maybe                    ( fromMaybe )
 import           Data.Time                     ( getCurrentTime )
 import           System.IO                     ( hSetBuffering, BufferMode(..)
-                                               , stdout, stderr
-                                               , hPutStrLn )
+                                               , stdout, stderr )
 import           System.Exit                   ( die )
 import           System.Environment            ( lookupEnv )
+import           System.Console.Concurrent     ( withConcurrentOutput
+                                               , outputConcurrent
+                                               , errorConcurrent )
 
 import           Data.Aeson
 import qualified Data.Text               as T  ( Text, pack )
@@ -114,8 +116,8 @@ logM :: MonadIO m => LogMsg -> m ()
 logM msg = liftIO $ do
   t <- getCurrentTime
   case msg of
-    Stdout m -> hPutStrLn stdout $ "[" ++ show t ++ "] " ++ m
-    Stderr m -> hPutStrLn stderr $ "[" ++ show t ++ "] " ++ m
+    Stdout m -> outputConcurrent $ "[" ++ show t ++ "] " ++ m ++ "\n"
+    Stderr m -> errorConcurrent  $ "[" ++ show t ++ "] " ++ m ++ "\n"
 
 --------------------------------------------------------------------------------
 -- Health check interface
@@ -206,10 +208,12 @@ charge :: CorsDomain
 charge corsDom sk Donation{..} = do
   currentTime <- liftIO getCurrentTime
 
-  let desc = "Donated " ++ show (conv donationAmount) ++ " USD"
+  let -- metadata to attach to customer/charge below
+      desc = "Donated " ++ show (conv donationAmount) ++ " USD"
       md   = [ ("amount", T.pack $ show donationAmount)
              , ("date",   T.pack $ show currentTime) ]
 
+      -- first, we have to create the customer...
       act1 =
         createCustomer
           -&- Email donationEmail
@@ -217,6 +221,7 @@ charge corsDom sk Donation{..} = do
           -&- Description (T.pack desc)
           -&- MetaData md
 
+      -- then we can charge them
       act2 cust =
         createCharge (Amount donationAmount) USD
           -&- ReceiptEmail donationEmail
@@ -237,9 +242,9 @@ charge corsDom sk Donation{..} = do
     -- utility to convert stripe amount to a decimal
     conv x = (fromIntegral x / 100) :: Double
 
-    -- handlers for failure and success
+    -- failure handler
     bad e = logM (Stderr $ "ERR: when charging -- " ++ show e)
-
+    -- success handler
     good Charge{..} = logM (Stdout msg) where
       ChargeId cid = chargeId
       msg = "OK: Submitted a donation of "
@@ -313,13 +318,14 @@ type FullAPI = HealthAPI
 -- loop, running the Warp server.
 main :: IO ()
 main = (,) <$> getCorsDomain <*> getKeys >>= runServer where
-  runServer (corsDom,(pk,sk)) = do
+  runServer (corsDom,(pk,sk)) = withConcurrentOutput $ do
     -- turn off buffering for stdout/error, so that tools (like docker) which
     -- read from stdout will have read(2) return immediately.
     hSetBuffering stdout NoBuffering
     hSetBuffering stderr NoBuffering
-    -- run the app
-    run 8080 app where
+    -- run the app. NB: withConcurrentOutput is important, so any remaining
+    -- concurrently produced messages are flushed before exit!
+    withConcurrentOutput (run 8080 app) where
       app = serve (Proxy :: Proxy FullAPI)
           $ health
        :<|> (pubkey corsDom Nothing pk)
