@@ -106,7 +106,7 @@ pubkey :: CorsDomain
        -- key.
        -> Server PubkeyAPI
        -- ^ Resulting server endpoint.
-pubkey corsDom var key = pure (addCors corsDom lst) where
+pubkey corsDom var key = pure (addCors (corsDom, "GET") lst) where
   lst    = unwords [ "var", v, "=", quoted, ";" ]
   quoted = "\"" ++ key ++ "\""
   v      = fromMaybe "stripe_pubkey" var
@@ -141,7 +141,7 @@ charge :: CorsDomain
        -- ^ Donation object.
        -> Handler (CorsHeader NoContent)
 charge corsDom sk Donation{..} = do
-  let result = addCors corsDom NoContent
+  let result = addCors (corsDom, "POST") NoContent
       act = createCharge (Amount donationAmount) USD
         -&- TokenId donationToken
         -&- ReceiptEmail donationEmail
@@ -182,7 +182,9 @@ getKeys = lookupEnv "STRIPE_KEYS" >>= \case
     _        -> die "ERROR: Invalid STRIPE_KEYS setting!"
 
 -- | Convenient alias for Servant type.
-type CorsHeader v = Headers '[Header "Access-Control-Allow-Origin" String] v
+type CorsHeader v = Headers '[ Header "Access-Control-Allow-Origin" String
+                             , Header "Access-Control-Allow-Methods" String
+                             ] v
 
 -- | Entry for @Access-Control-Allow-Origin@ header.
 type CorsDomain = String
@@ -197,12 +199,11 @@ getCorsDomain = lookupEnv "CORS_DOMAIN" >>= \case
   Just xs -> return xs
 
 -- | Add the @Access-Control-Allow-Origin@ header to a response.
-addCors :: String
-        -- ^ Entry to send in the header
+addCors :: (String, String)
         -> v
         -- ^ Return value
         -> CorsHeader v
-addCors n x = addHeader n x
+addCors (origin,method) = addHeader origin . addHeader method
 
 --------------------------------------------------------------------------------
 -- Entry point for the server, and Servant application
