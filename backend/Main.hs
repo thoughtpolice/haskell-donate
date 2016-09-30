@@ -89,7 +89,9 @@ addCors :: String
         -> v
         -- ^ Return value
         -> CorsHeader v
-addCors origin method = addHeader origin . addHeader method
+addCors origin method
+  = addHeader origin
+  . addHeader method
 
 -- | Add the @'CorsOptHeaders'@ to a response.
 corsOptHeaders :: String
