@@ -1,0 +1,6 @@
+((nil . ((indent-tabs-mode          . nil)
+         (fill-column               . 80)
+         (c-basic-offset            . 2)
+         (js-indent-level           . 2)
+         (buffer-file-coding-system . utf-8-unix)
+         (eval . (column-number-mode)))))
