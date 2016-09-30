@@ -90,13 +90,15 @@ instance MimeRender Javascript String where
 -- to submit charge requests. The file roughly looks like:
 --
 -- @var stripe_pubkey = "pk_test...";@
-type PubkeyAPI = "pubkey.js" :> Get '[Javascript] String
+type PubkeyAPI = "pubkey.js" :> Get '[Javascript] (CorsHeader String)
 
 -- | Public key endpoint API implementation. The file roughly looks
 -- like:
 --
 -- @var stripe_pubkey = "pk_test...";@
-pubkey :: Maybe String
+pubkey :: CorsDomain
+       -- ^ CORS domain.
+       -> Maybe String
        -- ^ Name of the public key variable in the javascript file.
        -- Defaults to @stripe_pubkey@.
        -> String
@@ -104,7 +106,8 @@ pubkey :: Maybe String
        -- key.
        -> Server PubkeyAPI
        -- ^ Resulting server endpoint.
-pubkey var key = pure (unwords [ "var", v, "=", quoted, ";" ]) where
+pubkey corsDom var key = pure (addCors corsDom lst) where
+  lst    = unwords [ "var", v, "=", quoted, ";" ]
   quoted = "\"" ++ key ++ "\""
   v      = fromMaybe "stripe_pubkey" var
 
@@ -127,22 +130,25 @@ data Donation = Donation
 -- credit/debit card a fixed amount of money via Stripe.
 type ChargeAPI = "charge"
               :> ReqBody '[JSON] Donation
-              :> Post '[PlainText] NoContent
+              :> Post '[PlainText] (CorsHeader NoContent)
 
 -- | Charge endpoint API implementation.
-charge :: String
+charge :: CorsDomain
+       -- ^ CORS Domain.
+       -> String
        -- ^ Stripe secret key.
        -> Donation
        -- ^ Donation object.
-       -> Handler NoContent
-charge sk Donation{..} = do
-  let act = createCharge (Amount donationAmount) USD
+       -> Handler (CorsHeader NoContent)
+charge corsDom sk Donation{..} = do
+  let result = addCors corsDom NoContent
+      act = createCharge (Amount donationAmount) USD
         -&- TokenId donationToken
         -&- ReceiptEmail donationEmail
 
   liftIO (stripe stripeConf act) >>= \case
-    Left e  -> bad e  >> return NoContent
-    Right x -> good x >> return NoContent
+    Left e  -> bad e  >> return result
+    Right x -> good x >> return result
   where
     stripeConf = StripeConfig (StripeKey $ T.encodeUtf8 (T.pack sk))
 
@@ -175,6 +181,29 @@ getKeys = lookupEnv "STRIPE_KEYS" >>= \case
     -- no bueno
     _        -> die "ERROR: Invalid STRIPE_KEYS setting!"
 
+-- | Convenient alias for Servant type.
+type CorsHeader v = Headers '[Header "Access-Control-Allow-Origin" String] v
+
+-- | Entry for @Access-Control-Allow-Origin@ header.
+type CorsDomain = String
+
+-- | Get the CORS domain configured for this server. This value is sent in as
+-- part of the @Access-Control-Allow-Origin@ header in responses, and is
+-- intended to be used to indicate what domains may POST requests to this
+-- machine.
+getCorsDomain :: IO String
+getCorsDomain = lookupEnv "CORS_DOMAIN" >>= \case
+  Nothing -> die "ERROR: Must configure CORS_DOMAIN environment variable!"
+  Just xs -> return xs
+
+-- | Add the @Access-Control-Allow-Origin@ header to a response.
+addCors :: String
+        -- ^ Entry to send in the header
+        -> v
+        -- ^ Return value
+        -> CorsHeader v
+addCors n x = addHeader n x
+
 --------------------------------------------------------------------------------
 -- Entry point for the server, and Servant application
 
@@ -186,9 +215,9 @@ type FullAPI = HealthAPI
 -- | Entry point, which does basic startup jobs and then sits in a
 -- loop, running the Warp server.
 main :: IO ()
-main = getKeys >>= uncurry runServer where
-  runServer pk sk = run 8080 app where
+main = (,) <$> getCorsDomain <*> getKeys >>= runServer where
+  runServer (corsDom,(pk,sk)) = run 8080 app where
     app = serve (Proxy :: Proxy FullAPI)
         $ health
-     :<|> (pubkey Nothing pk)
-     :<|> (charge sk)
+     :<|> (pubkey corsDom Nothing pk)
+     :<|> (charge corsDom sk)
