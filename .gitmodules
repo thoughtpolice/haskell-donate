@@ -1,0 +1,4 @@
+[submodule "backend/stripe"]
+	path = backend/stripe
+	url = https://github.com/thoughtpolice/stripe.git
+	branch = aseipp-hack

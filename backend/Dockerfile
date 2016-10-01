@@ -2,6 +2,7 @@ FROM ubuntu:16.04
 MAINTAINER Austin Seipp "aseipp@pobox.com"
 
 COPY *.cabal *.hs *.project /app/
+COPY stripe /app/stripe
 WORKDIR /app/
 
 RUN apt-get -y update && \
