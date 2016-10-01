@@ -104,12 +104,16 @@ function ogood(s)
 
 function disableDonateButton()
 {
-  document.getElementById('stripe-pay-button').disabled = true;
+  var btn = document.getElementById('stripe-pay-button');
+  btn.style.pointerEvents = 'none';
+  btn.style.opacity = '0.7';
 }
 
 function enableDonateButton()
 {
-  document.getElementById('stripe-pay-button').disabled = false;
+  var btn = document.getElementById('stripe-pay-button');
+  btn.style.pointerEvents = '';
+  btn.style.opacity = '1.0';
 }
 
 function validateAmnt()
