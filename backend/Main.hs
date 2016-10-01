@@ -150,31 +150,57 @@ instance MimeRender Javascript String where
 -- Servant API
 --
 
--- | Public key endpoint API. This API endpoint allows you to fetch a javascript
--- file containing a stripe public key, which you can use to submit charge
--- requests. The file roughly looks like:
+-- | Javascript data endpoint API. This API endpoint allows you to fetch a
+-- javascript file containing a stripe public key, and the domain to make
+-- requests to (i.e. the domain name pointing to this service when running),
+-- which you can use to submit charge requests. The file roughly looks like:
 --
--- @var stripe_pubkey = "pk_test...";@
-type PubkeyAPI = "pubkey.js" :> Get '[Javascript] (CorsHeader String)
+-- @
+-- var stripe_pubkey = "pk_test...";
+-- var charge_domain = "donate-svc.example.com";
+-- @
+--
+-- @stripe_pubkey@ is configured by the @STRIPE_KEYS@ environment
+-- variable. @charge_domain@ is configured by the @CHARGE_DOMAIN@ environment
+-- variable.
+type DataAPI = "data.js" :> Get '[Javascript] (CorsHeader String)
 
 -- | Public key endpoint API implementation. The file roughly looks
 -- like:
 --
--- @var stripe_pubkey = "pk_test...";@
-pubkey :: CorsDomain
-       -- ^ CORS domain.
-       -> Maybe String
-       -- ^ Name of the public key variable in the javascript file.
-       -- Defaults to @stripe_pubkey@.
-       -> String
-       -- ^ Stripe public key. Can be either a test or live public
-       -- key.
-       -> Server PubkeyAPI
-       -- ^ Resulting server endpoint.
-pubkey corsDom var key = pure (addCors corsDom "GET" lst) where
-  lst    = unwords [ "var", v, "=", quoted, ";" ]
-  quoted = "\"" ++ key ++ "\""
-  v      = fromMaybe "stripe_pubkey" var
+-- @
+-- var stripe_pubkey = "pk_test...";
+-- var charge_domain = "donate-svc.example.com";
+-- @
+--
+-- @stripe_pubkey@ is configured by the @STRIPE_KEYS@ environment
+-- variable. @charge_domain@ is configured by the @CHARGE_DOMAIN@ environment
+-- variable.
+dataE :: CorsDomain
+      -- ^ CORS domain.
+      -> Maybe String
+      -- ^ Name of the public key variable in the javascript file. Defaults to
+      -- @stripe_pubkey@.
+      -> Maybe String
+      -- ^ Name of the charge domain variable in the javascript file. Defaults
+      -- to @charge_domain@.
+      -> String
+      -- ^ Stripe public key. Can be either a test or live public key.
+      -> String
+      -- ^ Charge domain.
+      -> Server DataAPI
+      -- ^ Resulting server endpoint.
+dataE corsDom svar cvar key dom
+  = pure (addCors corsDom "GET" lst)
+  where
+    lst = unwords [ "var", svar', "=", quoted1, ";" ] ++ "\n"
+       ++ unwords [ "var", cvar', "=", quoted2, ";" ] ++ "\n"
+
+    quoted1 = "\"" ++ key ++ "\""
+    quoted2 = "\"" ++ dom ++ "\""
+
+    svar'   = fromMaybe "stripe_pubkey" svar
+    cvar'   = fromMaybe "charge_domain" cvar
 
 --------------------------------------------------------------------------------
 -- Stripe charge API
@@ -298,29 +324,41 @@ getCorsDomain = lookupEnv "CORS_DOMAIN" >>= \case
   Nothing -> die "ERROR: Must configure CORS_DOMAIN environment variable!"
   Just xs -> return xs
 
+-- | Get the charge domain for the @/data.js@ API. The @CHARGE_DOMAIN@ is the
+-- domain that the associated javascript should submit the charge request to,
+-- using the @/charge@ endpoint.
+getChargeDomain :: IO String
+getChargeDomain = lookupEnv "CHARGE_DOMAIN" >>= \case
+  Nothing -> die "ERROR: must configure CHARGE_DOMAIN environment variable!"
+  Just xs -> return xs
+
 --------------------------------------------------------------------------------
 -- Entry point for the server, and Servant application
 
 -- | The full set of Servant API endpoints, combined into one full endpoint.
 type FullAPI = HealthAPI
-          :<|> PubkeyAPI
+          :<|> DataAPI
           :<|> ChargeAPI
           :<|> ChargeOptionsAPI
 
 -- | Entry point, which does basic startup jobs and then sits in a
 -- loop, running the Warp server.
 main :: IO ()
-main = (,) <$> getCorsDomain <*> getKeys >>= runServer where
-  runServer (corsDom,(pk,sk)) = withConcurrentOutput $ do
-    -- turn off buffering for stdout/error, so that tools (like docker) which
-    -- read from stdout will have read(2) return immediately.
-    hSetBuffering stdout NoBuffering
-    hSetBuffering stderr NoBuffering
-    -- run the app. NB: withConcurrentOutput is important, so any remaining
-    -- concurrently produced messages are flushed before exit!
-    withConcurrentOutput (run 8080 app) where
-      app = serve (Proxy :: Proxy FullAPI)
-          $ health
-       :<|> (pubkey corsDom Nothing pk)
-       :<|> (charge corsDom sk)
-       :<|> (chargeOpts corsDom)
+main = grabVars >>= runServer
+  where
+    grabVars = (,,) <$> getCorsDomain
+                    <*> getChargeDomain
+                    <*> getKeys
+    runServer (corsDom,chargeDom,(pk,sk)) = withConcurrentOutput $ do
+      -- turn off buffering for stdout/error, so that tools (like docker) which
+      -- read from stdout will have read(2) return immediately.
+      hSetBuffering stdout NoBuffering
+      hSetBuffering stderr NoBuffering
+      -- run the app. NB: withConcurrentOutput is important, so any remaining
+      -- concurrently produced messages are flushed before exit!
+      withConcurrentOutput (run 8080 app) where
+        app = serve (Proxy :: Proxy FullAPI)
+            $ health
+         :<|> (dataE corsDom Nothing Nothing pk chargeDom)
+         :<|> (charge corsDom sk)
+         :<|> (chargeOpts corsDom)

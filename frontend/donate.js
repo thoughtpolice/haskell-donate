@@ -34,7 +34,7 @@ function postCharge(params, goodk, badk) {
     }
   }
 
-  xhr.open('POST', 'https://donate-svc.cowsay.pw/charge', true);
+  xhr.open('POST', 'https://' + charge_domain + '/charge', true);
   xhr.setRequestHeader('Content-Type', 'application/json;charset=utf-8');
   xhr.send(JSON.stringify(params));
 }
