@@ -18,11 +18,11 @@ function getDescription() {
 }
 
 /**
-** Send a POST request to a URL with a set of parameters as a JSON body with
-** UTF-8 encoding. Invoke one of two return continuations depending on whether
-** or not the request completed with a 200 response.
+** Send a POST request to the charge endpoint URL with a set of parameters as a
+** JSON body, with UTF-8 encoding. Invoke one of two return continuations
+** depending on whether or not the request completed with a 200 response.
 */
-function ajaxPost(url, params, goodk, badk) {
+function postCharge(params, goodk, badk) {
   var xhr;
   xhr = new XMLHttpRequest();
 
@@ -34,14 +34,33 @@ function ajaxPost(url, params, goodk, badk) {
     }
   }
 
-  xhr.open("POST", url, true);
-  xhr.setRequestHeader("Content-Type", "application/json;charset=utf-8");
+  xhr.open('POST', 'https://donate-svc.cowsay.pw/charge', true);
+  xhr.setRequestHeader('Content-Type', 'application/json;charset=utf-8');
   xhr.send(JSON.stringify(params));
+}
+
+/*
+** Decodes an error response from the server as JSON, and returns the resulting
+** message string.
+*/
+function decodeError(err) {
+  var err;
+
+  try {
+    err = JSON.parse(responseText).message;
+  } catch (x) {
+    err = 'Unknown error. :(';
+  }
+
+  return err;
 }
 
 function onoes(s)
 {
-  console.log("ERROR [donate.js]: " + s);
+  var time = new Date().toUTCString();
+  var str = '[' + time + '] ERROR: ' +  s;
+
+  console.log(str);
   /*
   $('#payment_status').removeClass('in'); // fade out if necessary
   $('#payment_status').removeClass('alert-success').addClass('alert-error');
@@ -53,7 +72,10 @@ function onoes(s)
 
 function ogood(s)
 {
-  console.log("OK [donate.js]: " + s);
+  var time = new Date().toString();
+  var str = '[' + time + '] OK: ' +  s;
+
+  console.log(str);
   /*
   $('#payment_status').removeClass('in'); // fade out if necessary
   $('#payment_status').removeClass('alert-error').addClass('alert-success');
@@ -62,15 +84,6 @@ function ogood(s)
   */
   return null;
 }
-
-// hide alert when button is clicked
-/*
-$(function() {
-  $('#pay_status_close_btn').click(function () {
-    $('#payment_status').removeClass('in');
-  });
-});
-*/
 
 // -----------------------------------------------------------------------------
 // -- Dealing with $$$
@@ -107,19 +120,78 @@ function validateAmnt()
 }
 
 // -----------------------------------------------------------------------------
-// -- Entry point
+// -- Apple Pay
 
 // Apple Pay setup
 Stripe.setPublishableKey(stripe_pubkey);
 Stripe.applePay.checkAvailability(function(avail) {
-  // TODO FIXME: Implement Apple Pay.
-  if (false && avail) {
+  if (avail) {
     document.getElementById('apple-pay-div').style.display    = 'block';
     document.getElementById('apple-pay-button').style.display = 'block';
   }
 });
 
-// Stripe Checkout setup
+/*
+** Invoked when the user clicks the Apple Pay button on a supported iOS/macOS
+** device. This uses Stripe to open up the Apple Pay window and complete the
+** donation flow.
+*/
+function applePay() {
+  // TODO FIXME: Test and enable Apple Pay.
+  onoes("Apple Pay currently doesn't work :(");
+  return;
+
+  var amnt = validateAmnt();
+  if (amnt == null) return;
+
+  // Set up payment object
+  var payment = {
+    countryCode: 'US',
+    currencyCode: 'USD',
+    total: {
+      label: 'Haskell.org',
+      amount: parseFloat(amnt / 100).toFixed(2)
+    },
+  };
+
+  // Logging function
+  var logErr = function (e) { onoes(e.message); }
+
+  // POST function, invoked by the Apple Pay flow to call the server and
+  // return an appropriate result.
+  var doPost = function (result, completion) {
+    var params = {};
+    params.donationToken   = result.token.id;
+    // TODO FIXME: rest of parameters!
+    //params.donationEmail  = ... ;
+    //params.donationAmount = ... ;
+
+    var goodk = function () {
+      ogood('Successfully charged -- thank you!');
+      completion(ApplePaySession.STATUS_SUCCESS);
+    }
+
+    var badk  = function (err) {
+      onoes('Payment failed. Reason: ' + decodeError(err));
+      completion(ApplePaySession.STATUS_FAILURE);
+    }
+
+    postCharge(params, goodk, badk);
+  }
+
+  // Go
+  var session = Stripe.applePay.buildSession(payment, doPost, logErr);
+  session.begin();
+}
+
+// -----------------------------------------------------------------------------
+// -- Stripe Checkout
+
+/*
+** Stripe Checkout handler object. Created with our specified configuration, and
+** later invoked when the user wants to donate in order to complete the donation
+** flow.
+*/
 var checkoutHandler = StripeCheckout.configure({
   key:             stripe_pubkey,
   name:            'Donate to Haskell.org',
@@ -131,56 +203,66 @@ var checkoutHandler = StripeCheckout.configure({
     var amnt = validateAmnt();
     if (amnt == null) return;
 
-    // Amount is OK, disable the donate button
+    // Amount is OK, disable the donate button for now. It'll be re-enabled
+    // after the request to the server completes and returns a value.
     disableDonateButton();
 
-    // Construct the JSON object we'll send to the backend server.
     var params = {};
     params.donationAmount = amnt;
     params.donationEmail  = token.email;
     params.donationToken  = token.id;
 
-    // The good continuation posts a happy message and re-enables the donation
-    // button.
     var goodk = function () {
-      var date = new Date();
-
-      // Yay!
-      ogood(date.toUTCString() + ': Successfully charged -- thank you!');
+      ogood('Successfully charged -- thank you!');
       enableDonateButton();
     };
 
-    // The bad continuation posts an error and re-enables the donation button.
-    var badk = function (responseText) {
-      var date = new Date();
-      var err;
-
-      try {
-        err = JSON.parse(responseText).message;
-      } catch (x) {
-        err = 'Unknown error. :(';
-      }
-
-      // Womp womp...
-      onoes(date.toUTCString() + ': Payment failed. Reason: ' + err);
+    var badk = function (err) {
+      onoes('Payment failed. Reason: ' + decodeError(err));
       enableDonateButton();
     };
 
-    // Go
-    ajaxPost('https://donate-svc.cowsay.pw/charge', params, goodk, badk);
+    postCharge(params, goodk, badk);
   }
 });
 
-// Open checkout when the donate button is clicked.
-document.getElementById('stripe-pay-button').addEventListener('click', function(e) {
+/*
+** Invoked when the user clicks the donate button. Validates that the given
+** input amount of money is OK, and then calls the Stripe Checkout handler to
+** complete the remaining donation flow.
+*/
+function stripePay(e) {
   var amnt = validateAmnt();
   if (amnt == null) return;
 
-  checkoutHandler.open({ amount: amnt, description: getDescription() });
+  checkoutHandler.open({
+    amount: amnt,
+    description: getDescription()
+  });
   e.preventDefault();
-});
+}
+
+// -----------------------------------------------------------------------------
+// -- Top level handlers
+
+// Open Apple Pay when the Apple Pay button is clicked
+document
+  .getElementById('apple-pay-button')
+  .addEventListener('click', applePay);
+
+// Open Stripe Checkout when the donate button is clicked.
+document
+  .getElementById('stripe-pay-button')
+  .addEventListener('click', stripePay);
 
 // Close Checkout on page navigation.
-window.addEventListener('popstate', function () {
-  checkoutHandler.close();
+window.addEventListener('popstate', function () { checkoutHandler.close(); });
+
+// hide alert when button is clicked
+/*
+$(function() {
+  $('#pay_status_close_btn').click(function () {
+    $('#payment_status').removeClass('in');
+  });
 });
+*/
