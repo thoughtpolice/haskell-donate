@@ -72,6 +72,6 @@ h1,h2,h3 {
   outline: none;
 }
 
-monies:focus {
+#monies:focus {
   border: 3px solid #555;
 }
