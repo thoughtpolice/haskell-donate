@@ -75,3 +75,26 @@ h1,h2,h3 {
 #monies:focus {
   border: 3px solid #555;
 }
+
+#status-div {
+  opacity: 0;
+  transition: opacity 0.6s;
+  padding: 5px;
+  /* background-color: #f44336; */
+  color: white;
+}
+
+#status-x-btn {
+  margin-left: 20px;
+  color: white;
+  font-weight: bold;
+  float: right;
+  font-size: 22px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+#status-x-btn:hover {
+  color: black;
+}

@@ -55,33 +55,47 @@ function decodeError(err) {
   return err;
 }
 
+/*
+** Report an error to the user, in case something goes wrong. This writes the
+** error to console.log as well as updating the 'status-msg' div element.
+*/
 function onoes(s)
 {
   var time = new Date().toUTCString();
   var str = '[' + time + '] ERROR: ' +  s;
 
   console.log(str);
-  /*
-  $('#payment_status').removeClass('in'); // fade out if necessary
-  $('#payment_status').removeClass('alert-success').addClass('alert-error');
-  $('#status_message').html("<small>" + s + "</small>");
-  $('#payment_status').addClass('in');
-  */
+
+  var msg = document.getElementById('status-msg');
+  msg.innerHTML = str;
+
+  var div = document.getElementById('status-div');
+  div.style.opacity = '1';
+  div.style.backgroundColor = 'red';
+  setTimeout(function(){ div.style.display = ''; }, 600);
+
   return null;
 }
 
+/*
+** Report success to the user. This writes the error to console.log as well as
+** updating the 'status-msg' div element.
+*/
 function ogood(s)
 {
   var time = new Date().toString();
   var str = '[' + time + '] OK: ' +  s;
 
   console.log(str);
-  /*
-  $('#payment_status').removeClass('in'); // fade out if necessary
-  $('#payment_status').removeClass('alert-error').addClass('alert-success');
-  $('#status_message').html("<small>" + s + "</small>");
-  $('#payment_status').addClass('in');
-  */
+
+  var msg = document.getElementById('status-msg');
+  msg.innerHTML = str;
+
+  var div = document.getElementById('status-div');
+  div.style.opacity          = '1';
+  div.style.backgroundColor = 'green';
+  setTimeout(function(){ div.style.display = ''; }, 600);
+
   return null;
 }
 
@@ -258,11 +272,11 @@ document
 // Close Checkout on page navigation.
 window.addEventListener('popstate', function () { checkoutHandler.close(); });
 
-// hide alert when button is clicked
-/*
-$(function() {
-  $('#pay_status_close_btn').click(function () {
-    $('#payment_status').removeClass('in');
+// Hide alert when button is clicked
+document
+  .getElementById('status-x-btn')
+  .addEventListener('click', function () {
+    var div = document.getElementById('status-div');
+    div.style.opacity = '0';
+    setTimeout(function(){ div.style.display = 'none'; }, 600);
   });
-});
-*/
