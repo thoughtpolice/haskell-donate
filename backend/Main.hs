@@ -45,6 +45,7 @@ import           System.Environment            ( lookupEnv )
 import           System.Console.Concurrent     ( withConcurrentOutput
                                                , outputConcurrent
                                                , errorConcurrent )
+import           Text.Printf                   ( printf )
 
 import           Data.Aeson
 import qualified Data.Text               as T  ( Text, pack )
@@ -58,7 +59,6 @@ import           Servant
 
 import           Web.Stripe
 import           Web.Stripe.Charge
-import           Web.Stripe.Customer
 
 --------------------------------------------------------------------------------
 -- Types and utilities
@@ -208,31 +208,24 @@ charge :: CorsDomain
 charge corsDom sk Donation{..} = do
   currentTime <- liftIO getCurrentTime
 
-  let -- metadata to attach to customer/charge below
-      desc = "Donated " ++ show (conv donationAmount) ++ " USD"
+  let -- metadata to attach to charge below
+      desc = "Donated $" ++ printf "%.2f" (conv donationAmount) ++ " USD"
       md   = [ ("amount", T.pack $ show donationAmount)
-             , ("date",   T.pack $ show currentTime) ]
+             , ("date",   T.pack $ show currentTime)
+             , ("reason", "donation")
+             ]
 
-      -- first, we have to create the customer...
-      act1 =
-        createCustomer
-          -&- Email donationEmail
-          -&- TokenId donationToken
-          -&- Description (T.pack desc)
-          -&- MetaData md
-
-      -- then we can charge them
-      act2 cust =
+      act =
         createCharge (Amount donationAmount) USD
           -&- ReceiptEmail donationEmail
-          -&- (customerId cust)
+          -&- Description (T.pack desc)
+          -&- MetaData md
+          -&- TokenId donationToken
 
   -- Do the business
-  liftIO (stripe stripeConf act1) >>= \case
+  liftIO (stripe stripeConf act) >>= \case
     Left e  -> bad e
-    Right x -> liftIO (stripe stripeConf (act2 x)) >>= \case
-      Left e  -> bad e
-      Right v -> good v
+    Right x -> good x
 
   -- Done
   return $ addCors corsDom "POST" NoContent
@@ -247,8 +240,8 @@ charge corsDom sk Donation{..} = do
     -- success handler
     good Charge{..} = logM (Stdout msg) where
       ChargeId cid = chargeId
-      msg = "OK: Submitted a donation of "
-         ++ unwords [ show (conv chargeAmount), show chargeCurrency ]
+      msg = "OK: Submitted a donation of $"
+         ++ unwords [ printf "%.2f" (conv chargeAmount), show chargeCurrency ]
          ++ " (with a charge ID of " ++ show cid ++ "); receipt sent to "
          ++ show (fromMaybe "(none)" chargeReceiptEmail)
 
