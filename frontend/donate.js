@@ -102,6 +102,10 @@ function ogood(s)
 // -----------------------------------------------------------------------------
 // -- Dealing with $$$
 
+/*
+** Disable the donation button; used whenever the user clicks to ensure they
+** don't double click, or click again while the server is processing the request.
+*/
 function disableDonateButton()
 {
   var btn = document.getElementById('stripe-pay-button');
@@ -109,6 +113,10 @@ function disableDonateButton()
   btn.style.opacity = '0.7';
 }
 
+/*
+** Enable the donate button; used after the donation request is satisfied by
+** Stripe, regardless of success or failure.
+*/
 function enableDonateButton()
 {
   var btn = document.getElementById('stripe-pay-button');
@@ -116,11 +124,20 @@ function enableDonateButton()
   btn.style.opacity = '1.0';
 }
 
+/*
+** Validate the textual amount of money to be donated in the input form. Either
+** fail if the input is improperly formatted, and return null. Or, if
+** successful, convert the input to USD cents, which is the unit that Stripe
+** uses in its API (e.g. 10.25 = 1025).
+*/
 function validateAmnt()
 {
+  // There has to be something.
   var amnt = document.getElementById('monies').value.trim();
   if (amnt.length == 0) return onoes('You must enter a valid amount of money.');
 
+  // And, it needs to be some number of digits, followed by one-or-two digits
+  // after the decimal place (if the decimal place exists).
   var match = /^(\d*)(?:\.(\d{1,2}))?$/.exec(amnt);
   if (!match) return onoes("Invalid amount: " + amnt);
 
@@ -130,9 +147,12 @@ function validateAmnt()
   if (r1 == null || r1.length == 0) r1 = "0";
   if (r2 != null && r2.length == 1) r2 += "0";
 
+  // Parse the components into integers.
   var dolla = parseInt(r1, 10),
-      cents = parseInt(r2 || "0", 10);
+      cents = parseInt(r2 || "0", 10),
       total = (dolla * 100) + cents;
+
+  // The minimum possible charge is 50 cents (mandated by Stripe, not us).
   if (total < 50) return onoes('Minimum charge is 50 cents!');
   return total;
 }
